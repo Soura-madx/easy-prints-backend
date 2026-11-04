@@ -21,7 +21,7 @@ const server = http.createServer(app);
 // WebSocket (Socket.io) Setup with Frontend URL from .env
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL, // e.g., http://localhost:5173
+    origin: ['https://easy-prints-frontend.vercel.app', 'http://localhost:5173'], // e.g., http://localhost:5173
     methods: ["GET", "POST", "PUT", "DELETE"]
   }
 });
@@ -30,8 +30,20 @@ const io = new Server(server, {
 app.set('io', io);
 
 // Middleware
+// Localhost aur Vercel dono ko allow karne ke liye array bana diya
+const allowedOrigins = ['https://easy-prints-frontend.vercel.app', 'http://localhost:5173'];
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL
+  origin: function (origin, callback) {
+    // allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      var msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
+  credentials: true
 }));
 app.use(express.json());
 
