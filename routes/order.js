@@ -93,25 +93,39 @@ router.put('/:orderId/status', async (req, res) => {
 });
 
 router.post('/calculate-price', async (req, res) => {
-  const { shopId, pages, isColor, isDoubleSided } = req.body;
-  const shop = await Shop.findById(shopId);
+  try {
+    const { shopId, pages, copies, color, sides, paperSize } = req.body;
+    const shop = await Shop.findById(shopId);
 
-  // Shop ki custom pricing nikalna
-  let perPageCost = isColor ? shop.pricing.colorSingle : shop.pricing.bwSingle;
-  if (isDoubleSided) {
-    perPageCost = isColor ? shop.pricing.colorDouble : shop.pricing.bwDouble;
+    if (!shop) return res.status(404).json({ error: 'Shop not found' });
+
+    // 1. Dukandaar ki Shop settings se base rate nikalna
+    let perPageCost = color === 'Color' ? shop.pricing.colorSingle : shop.pricing.bwSingle;
+    if (sides === 'both') {
+      perPageCost = color === 'Color' ? shop.pricing.colorDouble : shop.pricing.bwDouble;
+    }
+
+    // 2. Paper Size ke hisaab se rate adjust karna
+    if (paperSize === 'A3') {
+      perPageCost *= 2; // A3 page A4 ka double hota hai
+    } else if (paperSize === 'A5') {
+      perPageCost *= 0.5; // A5 page A4 ka aadha hota hai
+    }
+
+    // 3. Exact Calculation: (Rate × Pages × Copies)
+    const totalCopies = copies || 1;
+    const baseAmount = pages * perPageCost * totalCopies;
+    const gatewayFee = baseAmount * 0.02; // 2% handling fee
+    const finalAmountToPay = baseAmount + gatewayFee;
+
+    res.json({
+      baseAmount: baseAmount.toFixed(2),
+      gatewayFee: gatewayFee.toFixed(2),
+      finalAmountToPay: finalAmountToPay.toFixed(2)
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to calculate price' });
   }
-
-  // Exact 2% calculation
-  const baseAmount = pages * perPageCost;
-  const gatewayFee = baseAmount * 0.02;
-  const finalAmountToPay = baseAmount + gatewayFee;
-
-  res.json({
-    baseAmount: baseAmount.toFixed(2),
-    gatewayFee: gatewayFee.toFixed(2), // Customer ko transparency dikhane ke liye
-    finalAmountToPay: finalAmountToPay.toFixed(2)
-  });
 });
 
 module.exports = router;
