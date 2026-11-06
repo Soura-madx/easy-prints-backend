@@ -23,7 +23,8 @@ const orderSchema = new mongoose.Schema({
     baseAmount: { type: Number, required: true },
     gatewayFee: { type: Number, required: true },
     finalPaidAmount: { type: Number, required: true },
-    paymentStatus: { type: String, enum: ['Paid', 'Pending'], default: 'Paid' }
+    paymentStatus: { type: String, enum: ['Paid', 'Pending'], default: 'Paid' },
+    paymentMethod: { type: String, enum: ['Online', 'Cash'], default: 'Online' }
   },
   
   status: { type: String, enum: ['Pending', 'Printing', 'Completed'], default: 'Pending' },
