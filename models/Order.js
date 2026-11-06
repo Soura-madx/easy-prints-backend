@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const orderSchema = new mongoose.Schema({
   shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop', required: true },
   customerName: { type: String, required: true },
+  tokenNumber: { type: String, required: true }, // NAYA: Token Number
   
   files: [{
     fileUrl: { type: String, required: true },
@@ -10,11 +11,11 @@ const orderSchema = new mongoose.Schema({
     settings: {
       pages: { type: Number, required: true },
       copies: { type: Number, default: 1 },
-      color: { type: String, default: 'B&W' },        // 'B&W' or 'Color'
-      paperSize: { type: String, default: 'A4' },     // 'A4', 'A3', 'A5', etc.
-      sides: { type: String, default: 'single' },     // 'single' or 'both'
-      orientation: { type: String, default: 'portrait' }, // 'portrait' or 'landscape'
-      scale: { type: String, default: 'fit' }         // 'fit' or 'actual'
+      color: { type: String, default: 'B&W' },
+      paperSize: { type: String, default: 'A4' },
+      sides: { type: String, default: 'single' },
+      orientation: { type: String, default: 'portrait' },
+      scale: { type: String, default: 'fit' }
     }
   }], 
   
@@ -26,7 +27,8 @@ const orderSchema = new mongoose.Schema({
   },
   
   status: { type: String, enum: ['Pending', 'Printing', 'Completed'], default: 'Pending' },
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now },
+  completedAt: { type: Date } // NAYA: Track karne ke liye kab complete hua
 });
 
 module.exports = mongoose.model('Order', orderSchema);

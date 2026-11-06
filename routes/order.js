@@ -3,31 +3,25 @@ const Shop = require('../models/Shop');
 const Order = require('../models/Order');
 const router = express.Router();
 
-
-
-// Naya order create karne ki API
+// 1. Create Order API
 router.post('/create', async (req, res) => {
   try {
-    // ❌ Purana: const { shopId, customerName, files, fileName, settings, payment } = req.body;
-    
-    // ✅ Naya: fileName aur settings ab 'files' array ke andar objects me hain
     const { shopId, customerName, files, payment } = req.body;
+    
+    // NAYA: Generate 4-digit unique Token Number
+    const tokenNumber = Math.floor(1000 + Math.random() * 9000).toString();
 
-    // 1. Order ko Database me save karna
     const newOrder = new Order({
       shopId,
       customerName,
-      files, // Yahan poora array (jisme fileUrl, fileName, aur settings hain) save hoga
+      tokenNumber, // Token number save kar rahe hain
+      files,
       payment
     });
 
     const savedOrder = await newOrder.save();
 
-    // 2. REAL-TIME FLASH LOGIC (Socket.io)
-    // index.js me set kiya gaya 'io' instance yahan fetch karein
     const io = req.app.get('io');
-    
-    // Sirf us specific dukaan ke "room" me naya order bhejenge
     io.to(shopId).emit('NEW_PRINT_ORDER', savedOrder);
 
     res.status(201).json({ 
@@ -35,62 +29,59 @@ router.post('/create', async (req, res) => {
       message: 'Order placed successfully!',
       order: savedOrder 
     });
-
   } catch (error) {
-    console.error('Order Creation Error:', error);
     res.status(500).json({ error: 'Failed to create order' });
   }
 });
 
-
-// GET: Kisi specific dukaan ke saare 'Pending' orders fetch karna
-router.get('/:shopId/pending', async (req, res) => {
+// 2. Fetch Dashboard Orders API (Pending + Recently Completed)
+router.get('/:shopId/dashboard-orders', async (req, res) => {
   try {
     const { shopId } = req.params;
     
-    // Sirf wo orders layenge jo abhi pending hain aur naye pehle aayenge
-    const pendingOrders = await Order.find({ 
-      shopId: shopId, 
-      status: 'Pending' 
+    // 10 minute pehle ka time nikalein
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+
+    // Wo orders layein jo ya toh 'Pending' hain, YA pichle 10 min me 'Completed' hue hain
+    const dashboardOrders = await Order.find({ 
+      shopId: shopId,
+      $or: [
+        { status: 'Pending' },
+        { status: 'Completed', completedAt: { $gte: tenMinutesAgo } }
+      ]
     }).sort({ createdAt: -1 });
 
-    res.json({ 
-      success: true, 
-      orders: pendingOrders 
-    });
+    res.json({ success: true, orders: dashboardOrders });
   } catch (error) {
-    console.error('Error fetching pending orders:', error);
     res.status(500).json({ error: 'Failed to fetch orders' });
   }
 });
 
-// PUT: Print command execute hone ke baad order ka status update karna
+// 3. Update Status API
 router.put('/:orderId/status', async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { status } = req.body; // e.g., 'Completed' ya 'Printing'
+    const { status } = req.body;
 
-    // Order find karke naya status set karna
-    const updatedOrder = await Order.findByIdAndUpdate(
-      orderId, 
-      { status: status },
-      { returnDocument: 'after' } // Return updated document
-    );
-
-    if (!updatedOrder) {
-      return res.status(404).json({ error: 'Order not found' });
+    const updateData = { status: status };
+    if (status === 'Completed') {
+      updateData.completedAt = new Date(); // Complete hone ka time record karein
     }
 
-    res.json({ 
-      success: true, 
-      message: `Order marked as ${status}`,
-      order: updatedOrder 
-    });
+    const updatedOrder = await Order.findByIdAndUpdate(
+      orderId, 
+      updateData,
+      { returnDocument: 'after' } 
+    );
+
+    res.json({ success: true, order: updatedOrder });
   } catch (error) {
-    console.error('Error updating order status:', error);
     res.status(500).json({ error: 'Failed to update status' });
   }
 });
+
+
+
 
 router.post('/calculate-price', async (req, res) => {
   try {
