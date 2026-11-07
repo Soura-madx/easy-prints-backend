@@ -2,34 +2,32 @@ const mongoose = require('mongoose');
 
 const orderSchema = new mongoose.Schema({
   shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop', required: true },
-  customerName: { type: String, required: true },
-  tokenNumber: { type: String, required: true }, // NAYA: Token Number
-  
+  customerName: { type: String, default: 'Walk-in Customer' },
+  tokenNumber: { type: String },
   files: [{
-    fileUrl: { type: String, required: true },
-    fileName: { type: String, required: true },
+    fileUrl: String,
+    fileName: String,
     settings: {
-      pages: { type: Number, required: true },
-      copies: { type: Number, default: 1 },
-      color: { type: String, default: 'B&W' },
-      paperSize: { type: String, default: 'A4' },
-      sides: { type: String, default: 'single' },
-      orientation: { type: String, default: 'portrait' },
-      scale: { type: String, default: 'fit' }
+      pages: Number,
+      copies: Number,
+      color: String,
+      paperSize: String,
+      sides: String,
+      orientation: String,
+      scale: String
     }
-  }], 
-  
+  }],
+  // YEH PAYMENT OBJECT MATCH HONA ZAROORI HAI
   payment: {
-    baseAmount: { type: Number, required: true },
-    gatewayFee: { type: Number, required: true },
+    baseAmount: { type: Number },
+    gatewayFee: { type: Number, default: 0 },
     finalPaidAmount: { type: Number, required: true },
-    paymentStatus: { type: String, enum: ['Paid', 'Pending'], default: 'Paid' },
-    paymentMethod: { type: String, enum: ['Online', 'Cash'], default: 'Online' }
+    paymentStatus: { type: String, default: 'Pending' },
+    paymentMethod: { type: String, default: 'Cash' }
   },
-  
-  status: { type: String, enum: ['Pending', 'Printing', 'Completed'], default: 'Pending' },
+  status: { type: String, enum: ['Pending', 'Processing', 'Completed', 'Cancelled'], default: 'Pending' },
   createdAt: { type: Date, default: Date.now },
-  completedAt: { type: Date } // NAYA: Track karne ke liye kab complete hua
+  completedAt: { type: Date }
 });
 
 module.exports = mongoose.model('Order', orderSchema);

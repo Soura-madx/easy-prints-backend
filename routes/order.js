@@ -3,26 +3,32 @@ const Shop = require('../models/Shop');
 const Order = require('../models/Order');
 const router = express.Router();
 
+
 // 1. Create Order API
 router.post('/create', async (req, res) => {
   try {
     const { shopId, customerName, files, payment } = req.body;
     
-    // NAYA: Generate 4-digit unique Token Number
+    // Generate 4-digit unique Token Number
     const tokenNumber = Math.floor(1000 + Math.random() * 9000).toString();
 
     const newOrder = new Order({
       shopId,
       customerName,
-      tokenNumber, // Token number save kar rahe hain
+      tokenNumber, 
       files,
       payment
     });
 
     const savedOrder = await newOrder.save();
 
+    // NAYA: Socket.io safety check
     const io = req.app.get('io');
-    io.to(shopId).emit('NEW_PRINT_ORDER', savedOrder);
+    if (io) {
+      io.to(shopId).emit('NEW_PRINT_ORDER', savedOrder);
+    } else {
+      console.warn("Socket.io object not found on app.");
+    }
 
     res.status(201).json({ 
       success: true, 
@@ -30,10 +36,11 @@ router.post('/create', async (req, res) => {
       order: savedOrder 
     });
   } catch (error) {
+    // NAYA: Asli error terminal me print karega
+    console.error("Database Save Error: ", error);
     res.status(500).json({ error: 'Failed to create order' });
   }
 });
-
 // 2. Fetch Dashboard Orders API (Pending + Recently Completed)
 router.get('/:shopId/dashboard-orders', async (req, res) => {
   try {
@@ -81,11 +88,11 @@ router.put('/:orderId/status', async (req, res) => {
 });
 
 
+// CALCULATE PRICE (Only Shop Pricing, No Gateway Fee)
 router.post('/calculate-price', async (req, res) => {
   try {
     const { shopId, pages, copies, color, sides, paperSize } = req.body;
     const shop = await Shop.findById(shopId);
-
     if (!shop) return res.status(404).json({ error: 'Shop not found' });
 
     let perPageCost = 0;
@@ -93,61 +100,41 @@ router.post('/calculate-price', async (req, res) => {
     const isDouble = sides === 'both';
     const shopPricing = shop.pricing;
 
-    // STEP 1 & 2: Base Rate & Size Overrides
     if (paperSize !== 'A4' && shopPricing.sizePrices && shopPricing.sizePrices[paperSize]) {
-      // Agar override mila toh use karo
       perPageCost = isColor ? shopPricing.sizePrices[paperSize].color : shopPricing.sizePrices[paperSize].bw;
-      
-      // Double side ke liye base A4 ka ratio use karke price set karein (e.g. A4 me double side 1.5x hai, toh A3 me bhi 1.5x hoga)
       if (isDouble) {
         const doubleSideRatio = isColor ? (shopPricing.colorDouble / shopPricing.colorSingle) : (shopPricing.bwDouble / shopPricing.bwSingle);
         perPageCost = perPageCost * doubleSideRatio;
       }
     } else {
-      // Base A4 Price
       perPageCost = isColor ? shopPricing.colorSingle : shopPricing.bwSingle;
-      if (isDouble) {
-        perPageCost = isColor ? shopPricing.colorDouble : shopPricing.bwDouble;
-      }
+      if (isDouble) perPageCost = isColor ? shopPricing.colorDouble : shopPricing.bwDouble;
     }
-
-    // Fallback if overrides are missing (Just in case)
+    
     if (perPageCost === 0) {
       if (paperSize === 'A3') perPageCost *= 2;
       if (paperSize === 'A5') perPageCost *= 0.5;
     }
 
-    const totalCopies = copies || 1;
-    let baseAmount = pages * perPageCost * totalCopies;
+    let baseAmount = pages * perPageCost * (copies || 1);
 
-    // STEP 3: Bulk Discount Logic
-    let discount = 0;
+    // Bulk Discounts
     if (shopPricing.bulkDiscounts && shopPricing.bulkDiscounts.length > 0) {
-      // Dekho ki copies kis tier me aati hain
-      const applicableTier = shopPricing.bulkDiscounts.find(
-        tier => totalCopies >= tier.minCopies && totalCopies <= tier.maxCopies
-      );
-      if (applicableTier) {
-        discount = (baseAmount * applicableTier.discountPercent) / 100;
-      }
-    }
-    
-    const discountedBaseAmount = baseAmount - discount;
-
-    // STEP 4: Extra / Handling Charges
-    let handlingFeeAmt = 0;
-    if (shopPricing.handlingFee.type === 'Flat') {
-      handlingFeeAmt = shopPricing.handlingFee.value;
-    } else if (shopPricing.handlingFee.type === 'Percentage') {
-      handlingFeeAmt = (discountedBaseAmount * shopPricing.handlingFee.value) / 100;
+      const applicableTier = shopPricing.bulkDiscounts.find(t => (copies || 1) >= t.minCopies && (copies || 1) <= t.maxCopies);
+      if (applicableTier) baseAmount -= (baseAmount * applicableTier.discountPercent) / 100;
     }
 
-    const finalAmountToPay = discountedBaseAmount + handlingFeeAmt;
+    // Shopkeeper's own Handling Fee (Agar usne set ki hai toh)
+    let shopHandlingFeeAmt = 0;
+    if (shopPricing.handlingFee.type === 'Flat') shopHandlingFeeAmt = shopPricing.handlingFee.value;
+    else if (shopPricing.handlingFee.type === 'Percentage') shopHandlingFeeAmt = (baseAmount * shopPricing.handlingFee.value) / 100;
+
+    // Final amount without any 2% gateway cut
+    const finalAmountToPay = baseAmount + shopHandlingFeeAmt; 
 
     res.json({
       baseAmount: baseAmount.toFixed(2),
-      discountAmount: discount.toFixed(2), // Just for debugging, we won't show it to customer
-      handlingFee: handlingFeeAmt.toFixed(2),
+      gatewayFee: "0.00", // Hata diya
       finalAmountToPay: finalAmountToPay.toFixed(2)
     });
   } catch (error) {
