@@ -64,6 +64,7 @@ router.get('/:shopId/dashboard-orders', async (req, res) => {
   }
 });
 
+
 // 3. Update Status API
 router.put('/:orderId/status', async (req, res) => {
   try {
@@ -71,8 +72,12 @@ router.put('/:orderId/status', async (req, res) => {
     const { status } = req.body;
 
     const updateData = { status: status };
+    
     if (status === 'Completed') {
       updateData.completedAt = new Date(); // Complete hone ka time record karein
+      
+      // NAYA LOGIC: Jab order complete (print) ho jaye, toh uska payment bhi "Paid" maan lenge (Kyunki cash counter par le liya gaya hoga)
+      updateData['payment.paymentStatus'] = 'Paid';
     }
 
     const updatedOrder = await Order.findByIdAndUpdate(
@@ -88,7 +93,7 @@ router.put('/:orderId/status', async (req, res) => {
 });
 
 
-// CALCULATE PRICE (Only Shop Pricing, No Gateway Fee)
+// CALCULATE PRICE (PURE BASE AMOUNT - NO FEES AT ALL)
 router.post('/calculate-price', async (req, res) => {
   try {
     const { shopId, pages, copies, color, sides, paperSize } = req.body;
@@ -124,18 +129,11 @@ router.post('/calculate-price', async (req, res) => {
       if (applicableTier) baseAmount -= (baseAmount * applicableTier.discountPercent) / 100;
     }
 
-    // Shopkeeper's own Handling Fee (Agar usne set ki hai toh)
-    let shopHandlingFeeAmt = 0;
-    if (shopPricing.handlingFee.type === 'Flat') shopHandlingFeeAmt = shopPricing.handlingFee.value;
-    else if (shopPricing.handlingFee.type === 'Percentage') shopHandlingFeeAmt = (baseAmount * shopPricing.handlingFee.value) / 100;
-
-    // Final amount without any 2% gateway cut
-    const finalAmountToPay = baseAmount + shopHandlingFeeAmt; 
-
+    // Koi Handling Fee add nahi hogi. Base Amount hi Final Amount banega.
     res.json({
       baseAmount: baseAmount.toFixed(2),
-      gatewayFee: "0.00", // Hata diya
-      finalAmountToPay: finalAmountToPay.toFixed(2)
+      gatewayFee: "0.00", 
+      finalAmountToPay: baseAmount.toFixed(2) // Same as base amount
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to calculate price' });
